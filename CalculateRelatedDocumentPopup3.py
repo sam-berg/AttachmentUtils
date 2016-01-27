@@ -1,107 +1,78 @@
 ﻿import arcpy
 
-updateFields=['ID','HTML_DESC','HAS_CS','HAS_W','HAS_R','HAS_STORM','HAS_SAN'] #todo params
-searchFields=['ID','PLAN_','CS','WATER','RECLAIM','STORM','SANITARY','DRAWER'] #todo params 
-myworkspace= r'C:\Users\sosiecki\AppData\Roaming\ESRI\Desktop10.3\ArcCatalog\DeLand_QAQC.sde' #todo params
+myworkspace= r'C:\data\BostonFiber\BostonFiber2\BostonFiber2.gdb'
 
-inputFeatures=None
-targetDescriptionField=None
-relatedTable=None
-documentField=None
-serverPathPrepend=None
+inputFeatures='Boston_Streets'
+targetDescriptionField='HTMLDESC'
+pivottable='PIVOT'
+attachtable='scans__ATTACH'
 
+scansurl='http://gistest.vhb.com/arcgis/rest/services/BostonFiber/BostonFiberPub/MapServer/2'
+attachmenttableurl='http://'
+metadataurl='http://'
 
-inputFeatures = arcpy.GetParameterAsText(0)
-arcpy.AddMessage("Input Features: " + inputFeatures)
-
-targetDescriptionField = arcpy.GetParameterAsText(1)
-arcpy.AddMessage("Attachment Path Field: " + targetDescriptionField)
-
-relatedTable = arcpy.GetParameterAsText(2)
-arcpy.AddMessage("Related Table: " + relatedTable)
-
-documentField = arcpy.GetParameterAsText(3)
-arcpy.AddMessage("Document Field: " + documentField)
-
-serverPathPrepend = arcpy.GetParameterAsText(4)
-arcpy.AddMessage("Server Path Prepend: " + serverPathPrepend)
-
-
-
-iDocs=0
 
 try:
+    
+    arcpy.env.workspace = myworkspace #set workspace
+
     edit=arcpy.da.Editor(myworkspace) 
     edit.startEditing()
-    edit.startOperation()
-
-#For each centerline
-    arcpy.AddMessage("Reading Input Features...")
+    
+#for each street
+    updateFields=['OBJECTID',targetDescriptionField]
     with arcpy.da.UpdateCursor(inputFeatures,updateFields ) as selectedInputFeatures:
         for row in selectedInputFeatures:
-#          Get related records
-            sourceID=str(row[0])
-            where="ID=" + sourceID
 
-            arcpy.AddMessage("searching related records for " + where)
+            oid=row[0]
+            arcpy.AddMessage("processing feature " + str(oid) )
 
-            HAS_CS=False
-            HAS_WATER=False
-            HAS_RECLAIM=False
-            HAS_STORM=False
-            HAS_SANITARY=False
-            drawer="" 
+    #init list of scans
+            sDesc=''
+            iDocs=0
+    #get ATT_NAMEs from PIVOT
 
-            with arcpy.da.SearchCursor(relatedTable,searchFields, where) as selectedRelatedFeatures:
-            
-                documentPaths="" # clear description
+            where='REL_OBJECTID = ' + str(oid)
 
-#                      For each related record
-                iDocs=0
-                for row2 in selectedRelatedFeatures:
-                    
-#                                  Read document path
-                    documentName=row2[1]
-                    documentName+=".pdf"
-                    drawer=row2[7]
+    #get attachment feature using query and calculate URL
+            with arcpy.da.SearchCursor(pivottable,['REL_OBJECTID','ATT_NAME'],where) as pivotCursor:
+                arcpy.AddMessage(where)
+                for rowPivot in pivotCursor:
 
-                    if row2[2]=="Yes":HAS_CS=True
-                    if row2[3]=="Yes":HAS_WATER=True
-                    if row2[4]=="Yes":HAS_RECLAIM=True
-                    if row2[5]=="Yes":HAS_STORM=True
-                    if row2[6]=="Yes":HAS_SANITARY=True 
+                    where2="ATT_NAME='" + rowPivot[1] + "'"
+                    with arcpy.da.SearchCursor(attachtable,['ATTACHMENTID','REL_OBJECTID','ATT_NAME'],where2) as attachCursor:
+                        arcpy.AddMessage(where2)
+                        for rowAttach in attachCursor:
+                            aid=rowAttach[0]
+                            #arcpy.AddMessage(aid)
+                            attname=rowAttach[2]
+                            #arcpy.AddMessage(attname)
+                            attachURL=scansurl + '/' + str(rowAttach[1]) + '/attachments/' + str(aid)
+                            #arcpy.AddMessage(attachURL)
+                            sDesc=sDesc +  "<a href='" + attachURL + "' />" + attname  + "</a></br>"
+                            
+                            iDocs=iDocs+1
+                            #arcpy.AddMessage(iDocs)
 
-
-#                                  Append server path with document path
-                    serverPathPrepend = arcpy.GetParameterAsText(4)
-                    if drawer!=None:serverPathPrepend+="/"+drawer+"/"
-                    documentPath=serverPathPrepend + documentName
-                    documentPath="<a href='" + documentPath + "'>" + documentName + "</a>" 
-#                                  Concatenate HTML
-                    documentPaths+= '</br>' + documentPath
-                    iDocs+=1
-
-#Calculate into target URL field
-                documentPaths=str(iDocs) + " related document(s):</br>" + documentPaths
+    #calculate local street description field
+                sDesc=str(iDocs) + " related document(s):</br>" + sDesc
 
                 if iDocs>0:
-                        row[1]=documentPaths
-                        #arcpy.AddMessage("popup=" + documentPaths)
-
-                if HAS_CS==True:row[2]="Yes"
-                if HAS_WATER==True:row[3]="Yes"
-                if HAS_RECLAIM==True:row[4]="Yes"
-                if HAS_STORM==True:row[5]="Yes"
-                if HAS_SANITARY==True:row[6]="Yes" 
-            
-                selectedInputFeatures.updateRow(row)
-
-    edit.stopOperation()
+                    row[1]=sDesc
+                    arcpy.AddMessage(sDesc)
+                    edit.startOperation()
+                    selectedInputFeatures.updateRow(row)
+                    edit.stopOperation()
+    
     edit.stopEditing(True)
+    if selectedInputFeatures: del selectedInputFeatures
+    if attachCursor: del attachCursor
+    if pivotCursor:del pivotCursor
+
     arcpy.AddMessage ("Complete.")
 
 except arcpy.ExecuteError:
-    print(arcpy.GetMessages(2))
-    edit.stopEditing(False)
     arcpy.AddMessage ("Finished with Error.")
-
+    print(arcpy.GetMessages(2))
+    edit.stopEditing(True)
+    
