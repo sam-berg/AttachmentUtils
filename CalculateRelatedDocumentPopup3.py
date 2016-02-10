@@ -1,14 +1,17 @@
 ﻿import arcpy
 
 myworkspace= r'C:\data\BostonFiber\BostonFiber2\BostonFiber2.gdb'
-
+#myworkspace=r'C:\data\projects\DeLand\2-9-16.gdb'
 inputFeatures='Boston_Streets'
+#inputFeatures='Streets'
 targetDescriptionField='HTMLDESC'
 pivottable='PIVOT'
 attachtable='scans__ATTACH'
+scanstable='scans'
 
 scansurl='http://gistest.vhb.com/arcgis/rest/services/BostonFiber/BostonFiberPub/MapServer/2'
-attachmenttableurl='http://'
+#scansurl='http://gis2.vhb.com/projects/deland/scans/'
+attachmenttableurl='http://gis2.vhb.com/projects/deland/scans/'
 metadataurl='http://'
 
 
@@ -32,22 +35,22 @@ try:
             iDocs=0
     #get ATT_NAMEs from PIVOT
 
-            where='REL_OBJECTID = ' + str(oid)
+            where='ID = ' + str(oid)
 
     #get attachment feature using query and calculate URL
-            with arcpy.da.SearchCursor(pivottable,['REL_OBJECTID','ATT_NAME'],where) as pivotCursor:
+            with arcpy.da.SearchCursor(pivottable,['ID','PLAN'],where) as pivotCursor:
                 arcpy.AddMessage(where)
                 for rowPivot in pivotCursor:
 
-                    where2="ATT_NAME='" + rowPivot[1] + "'"
-                    with arcpy.da.SearchCursor(attachtable,['ATTACHMENTID','REL_OBJECTID','ATT_NAME'],where2) as attachCursor:
+                    where2="PLAN='" + rowPivot[1] + "'"
+                    with arcpy.da.SearchCursor(attachtable,['OBJECTID','ID','PLAN'],where2) as attachCursor:
                         arcpy.AddMessage(where2)
                         for rowAttach in attachCursor:
                             aid=rowAttach[0]
                             #arcpy.AddMessage(aid)
                             attname=rowAttach[2]
                             #arcpy.AddMessage(attname)
-                            attachURL=scansurl + '/' + str(rowAttach[1]) + '/attachments/' + str(aid)
+                            attachURL=scansurl + attname + '.pdf'# '/' + str(rowAttach[1]) + '/attachments/' + str(aid)
                             #arcpy.AddMessage(attachURL)
                             sDesc=sDesc +  "<a href='" + attachURL + "' />" + attname  + "</a></br>"
                             
